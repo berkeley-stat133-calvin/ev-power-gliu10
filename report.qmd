@@ -8,27 +8,110 @@ format: typst
 ## **Part 0: libraries**
 
 ```{r}
-
+library(tidyverse)
+library(sf)
+library(maps)
+library(ggplot2)
 ```
 
 ## **Part 1:** **Defining Research Question**
 
-Chosen Question:
+Chosen Question: Are EV registrations concentrated in states with a higher percentage of renewable energy in their total energy use?
 
 ## **Part 2: Data Preparation and Cleaning**
-
 ```{r}
+renew_use_2021 <- read_csv("data/renew-use-2021.csv", show_col_types = FALSE)
+renew_use_2022 <- read_csv("data/renew-use-2022.csv", show_col_types = FALSE)
+renew_use_2023 <- read_csv("data/renew-use-2023.csv", show_col_types = FALSE)
+
+av_energy_price <- read_csv("data/av-energy-price-2021-2023.csv", show_col_types = FALSE)
+
+total_energy_use_2021 <- read_csv("data/total-use-2021.csv", show_col_types = FALSE)
+total_energy_use_2022 <- read_csv("data/total-use-2022.csv", show_col_types = FALSE)
+total_energy_use_2023 <- read_csv("data/total-use-2023.csv", show_col_types = FALSE)
+
+
+ev_registrations_2023 <- read_csv("data/ev-registrations-by-state-2023.csv", show_col_types = FALSE)
+
+# --- Define a safer cleaning function ---
+clean_data <- function(df) {
+  df |>
+    janitor::clean_names() |>     # Clean names (lowercase, underscores, removes symbols)
+    mutate(across(where(is.character), str_trim)) |>  # Trim extra spaces
+    { if ("state" %in% names(.)) {                    # Standardize state names if present
+        mutate(., state = str_to_title(state))
+      } else { . }
+    }
+}
+
+renew_use_2021 <- clean_data(renew_use_2021)
+renew_use_2022 <- clean_data(renew_use_2022)
+renew_use_2023 <- clean_data(renew_use_2023)
+
+av_energy_price <- clean_data(av_energy_price)
+total_energy_use_2021 <- clean_data(total_energy_use_2021)
+total_energy_use_2022 <- clean_data(total_energy_use_2022)
+total_energy_use_2023 <- clean_data(total_energy_use_2023)
+ev_registrations_2023 <- clean_data(ev_registrations_2023)
 
 ```
 
 ## **Part 3: Joining / Pivoting Datasets for Analysis**
-
 ```{r}
-
+renew_use_all <- bind_rows(
+  renew_use_2021 |> mutate(year = 2021) |> rename(renewable_use = renewable_use_2021),
+  renew_use_2022 |> mutate(year = 2022) |> rename(renewable_use = renewable_use_2022),
+  renew_use_2023 |> mutate(year = 2023) |> rename(renewable_use = renewable_use_2023)
+) |>
+  # Sum up renewable use by state and year
+  group_by(state, year) |>
+  summarise(
+    renew_use_total = sum(renewable_use, na.rm = TRUE),
+    .groups = 'drop'
+  ) |>
+  filter(year == 2023) |>
+  select(state, renew_use_total)
 ```
 
 ## **Part 4: Mapping Visualization**
-
 ```{r}
+map_renewable_energy <- ggplot(data = map_data) +
+  geom_sf(aes(fill = percent_renewable), color = "white", linewidth = 0.1) +
+  scale_fill_viridis_c(
+    option = "G", 
+    direction = -1, 
+    name = "Renewable Energy (%)" 
+  ) +
+  labs(
+    title = "Share of Renewable Energy in Total Energy Use by State (2023)",
+    subtitle = "Higher percentages indicate cleaner energy for EV charging."
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text = element_blank(), 
+    axis.title = element_blank(),
+    panel.grid = element_blank()
+  )
+
+print(map_renewable_energy)
+
+map_ev_registrations <- ggplot(data = map_data) +
+  geom_sf(aes(fill = log_ev_registrations), color = "white", linewidth = 0.1) +
+  scale_fill_viridis_c(
+    option = "D", 
+    name = "EV Registrations (Log-Transformed)"
+  ) +
+  labs(
+    title = "EV Registrations by State (2023)",
+    subtitle = "Log-transformed for visual clarity."
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text = element_blank(),
+    axis.title = element_blank(),
+    panel.grid = element_blank()
+  )
+
+print(map_ev_registrations)
 
 ```
